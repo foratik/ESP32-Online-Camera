@@ -8,6 +8,8 @@ const char* password = "xxxxxxxxxxxx";
 const char* serverIP = "XXX.XXX.XXX.XXX";
 const int serverPort = 5000;
 
+extern uint16_t encode8b10b(uint8_t input, bool *rd);
+
 WiFiServer server(80);
 
 void sendPhotoToVPS(camera_fb_t *fb) {
