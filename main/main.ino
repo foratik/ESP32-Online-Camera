@@ -12,45 +12,75 @@ extern uint16_t encode8b10b(uint8_t input, bool *rd);
 
 WiFiServer server(80);
 
-void sendPhotoToVPS(camera_fb_t *fb) {
-  if (WiFi.status() == WL_CONNECTED) {
-    WiFiClient client;
-    if (!client.connect(serverIP, serverPort)) {
-      Serial.println("Connection to server failed");
-      return;
+void encodeData8b10b(const uint8_t* input, size_t len, uint8_t* output, size_t* outLen) {
+  bool rd = false;  // Running disparity
+  size_t outIdx = 0;
+  uint16_t bitBuffer = 0;
+  int bitCount = 0;
+
+  for (size_t i = 0; i < len; i++) {
+    uint16_t symbol = encode8b10b(input[i], &rd);
+
+    // Pack 10-bit symbols into byte stream
+    bitBuffer = (bitBuffer << 10) | symbol;
+    bitCount += 10;
+
+    while (bitCount >= 8) {
+      output[outIdx++] = (bitBuffer >> (bitCount - 8)) & 0xFF;
+      bitCount -= 8;
     }
-
-    String boundary = "----ESP32Boundary";
-    String bodyStart = "--" + boundary + "\r\n";
-    bodyStart += "Content-Disposition: form-data; name=\"photo\"; filename=\"photo.jpg\"\r\n";
-    bodyStart += "Content-Type: image/jpeg\r\n\r\n";
-
-    String bodyEnd = "\r\n--" + boundary + "--\r\n";
-
-    int contentLength = bodyStart.length() + fb->len + bodyEnd.length();
-
-    client.println("POST /send_photo HTTP/1.1");
-    client.println("Host: " + String(serverIP));
-    client.println("Content-Type: multipart/form-data; boundary=" + boundary);
-    client.println("Content-Length: " + String(contentLength));
-    client.println();
-    
-    client.print(bodyStart);
-    client.write(fb->buf, fb->len);
-    client.print(bodyEnd);
-
-    int timeout = millis() + 5000;
-    while (client.connected() && millis() < timeout) {
-      if (client.available()) {
-        String response = client.readStringUntil('\r');
-        Serial.println("Response: " + response);
-        break;
-      }
-    }
-    client.stop();
-  } else {
-    Serial.println("WiFi not connected");
   }
+
+  // Handle remaining bits
+  if (bitCount > 0) {
+    output[outIdx++] = (bitBuffer << (8 - bitCount)) & 0xFF;
+  }
+
+  *outLen = outIdx;
+}
+
+// =============================================
+// Modified Photo Sending Function
+// =============================================
+void sendPhotoToVPS(camera_fb_t *fb) {
+  if (WiFi.status() != WL_CONNECTED) {
+    Serial.println("WiFi not connected");
+    return;
+  }
+
+  WiFiClient client;
+  if (!client.connect(serverIP, serverPort)) {
+    Serial.println("Connection failed");
+    return;
+  }
+
+  // Encode the image data
+  size_t encodedSize = (fb->len * 10 + 7) / 8;  // Calculate output size
+  uint8_t* encodedData = (uint8_t*)malloc(encodedSize);
+  size_t actualEncodedSize;
+  
+  encodeData8b10b(fb->buf, fb->len, encodedData, &actualEncodedSize);
+
+  // Send HTTP headers
+  String boundary = "ESP32Boundary";
+  String header = "POST /upload HTTP/1.1\r\n";
+  header += "Host: " + String(serverIP) + "\r\n";
+  header += "Content-Type: multipart/form-data; boundary=" + boundary + "\r\n";
+  header += "Content-Length: " + String(actualEncodedSize + boundary.length() * 2 + 8) + "\r\n\r\n";
+  
+  client.print(header);
+  client.print("--" + boundary + "\r\n");
+  client.print("Content-Disposition: form-data; name=\"image\"; filename=\"encoded.img\"\r\n");
+  client.print("Content-Type: application/octet-stream\r\n\r\n");
+
+  // Send encoded data
+  client.write(encodedData, actualEncodedSize);
+
+  // Send footer
+  client.print("\r\n--" + boundary + "--\r\n");
+  
+  free(encodedData);
+  client.stop();
 }
 
 void startCameraServer() {
