@@ -1,76 +1,50 @@
-#include <stdio.h>
 #include <stdint.h>
-#include <stdlib.h>
-#include <time.h>
+#include <stdio.h>
+#include <string.h>
 
-void encode64b66b(uint8_t *input, size_t input_len, uint8_t *output, size_t *output_len) {
-    size_t input_blocks = input_len / 8;  // Number of 64-bit blocks
-    *output_len = input_blocks * 9;      // Each block expands to 9 bytes (66 bits)
+static uint64_t scrambler_state = (1ULL << 58) - 1;
 
-    uint64_t scrambler_state = 0xFFFF; // Initial scrambler state
-    for (size_t i = 0; i < input_blocks; i++) {
-        // Read 64 bits from input
-        uint64_t block = 0;
-        for (int j = 0; j < 8; j++) {
-            block = (block << 8) | input[i * 8 + j];
-        }
-
-        // Scramble the block
-        uint64_t scrambled = block ^ scrambler_state;
-
-        // Update scrambler state
-        scrambler_state = ((scrambler_state << 1) ^ ((scrambled >> 63) & 1)) & 0xFFFFFFFFFFFFFFFF;
-
-        // Write the sync header separately
-        size_t output_offset = i * 9;
-        output[output_offset] = 0b10000000; // Sync header: '10' in the top two bits
-
-        // Write the scrambled data
-        for (int j = 0; j < 8; j++) {
-            output[output_offset + 1 + j] = (scrambled >> (56 - 8 * j)) & 0xFF;
-        }
-    }
-}
-
-
-int main() {
-    const size_t SIZE = 64;
-
-    // Declare the byte array
-    uint8_t fbbuf[SIZE];
-
-    // Seed the random number generator
-    srand((unsigned int)time(NULL));
-
-    // Fill the array with random values
-    for (size_t i = 0; i < SIZE; i++) {
-        fbbuf[i] = rand() % 256; // Random byte (0-255)
+void encode_64b66b(uint64_t data, uint8_t encoded[9]) {
+    uint64_t scrambled_data = 0;
+    
+    for (int i = 63; i >= 0; i--) {
+        uint8_t input_bit = (data >> i) & 1;
+        
+        uint8_t feedback = ((scrambler_state >> 38) & 1) ^ ((scrambler_state >> 57) & 1);
+        
+        uint8_t scrambled_bit = input_bit ^ feedback;
+        
+        scrambler_state = (scrambler_state << 1) | scrambled_bit;
+        scrambler_state &= (1ULL << 58) - 1;
+        
+        scrambled_data = (scrambled_data << 1) | scrambled_bit;
     }
 
-    // Print the array
-    printf("fbbuf contents:\n");
-    for (size_t i = 0; i < SIZE; i++) {
-        printf("%02X ", fbbuf[i]);
-        if ((i + 1) % 8 == 0) printf("\n");
-    }
+    memset(encoded, 0, 9);
+    
+    encoded[0] = 0x40 | ((scrambled_data >> 58) & 0x3F);
+    
+    encoded[1] = (scrambled_data >> 50) & 0xFF;
+    encoded[2] = (scrambled_data >> 42) & 0xFF;
+    encoded[3] = (scrambled_data >> 34) & 0xFF;
+    encoded[4] = (scrambled_data >> 26) & 0xFF;
+    encoded[5] = (scrambled_data >> 18) & 0xFF;
+    encoded[6] = (scrambled_data >> 10) & 0xFF;
+    encoded[7] = (scrambled_data >> 2)  & 0xFF;
+    encoded[8] = (scrambled_data & 0x03) << 6;
 
-    size_t encoded_len = 0;
-    size_t output_buffer_len = SIZE * 9 / 8 + 9;  // Maximum possible size
-    uint8_t *encoded_data = (uint8_t *)malloc(output_buffer_len);
-    if (!encoded_data) {
-        printf("Memory allocation failed\n");
-        return 1;
-    }
-
-    encode64b66b(fbbuf, SIZE, encoded_data, &encoded_len);
-
-    printf("\nEncoded data:\n");
-    for (size_t i = 0; i < encoded_len; i++) {
-        printf("%02X ", encoded_data[i]);
-        if ((i + 1) % 8 == 0) printf("\n");
+    printf("Encoded 66-bit block: ");
+    for (int i = 0; i < 9; i++) {
+        printf("0x%02X, ", encoded[i]);
     }
     printf("\n");
+}
 
-    free(encoded_data);
+int main() {
+    uint64_t test_data = 0x2345678923456789;
+    uint8_t encoded_block[9];
+    
+    encode_64b66b(test_data, encoded_block);
+    
     return 0;
 }
