@@ -2053,16 +2053,30 @@ class EncDec_8B10B(object):
     ]
 
     @staticmethod
-    def dec_8b10b(data_in, verbose=False):
+    def dec_8b10b(data_in, verbose=True):
         assert data_in <= 0x3FF, "Data in must be maximum 10 bits"
-        decoded = EncDec_8B10B.dec_lookup[data_in]
-        if decoded == "DEC8b10bERR":
-            raise Exception(
-                "Input to 8B10B Decoder is not a 8B10B Encoded Word")
-        decoded = int(decoded, 2)
-        ctrl = (decoded >> 8) & 0x1
-        decoded &= 0xFF
-        if verbose:
-            print("Decoded: {:02X} - Control: {:01b}".format(decoded, ctrl))
 
-        return ctrl, decoded
+        print(f"Decoding input: {data_in:010b} ({hex(data_in)})")
+
+        decoded = EncDec_8B10B.dec_lookup[data_in] if data_in < len(EncDec_8B10B.dec_lookup) else "DEC8b10bERR"
+
+        if decoded == "DEC8b10bERR":
+            print(f"Error: {data_in:010b} is not a valid 8b/10b code")
+            raise Exception("Input to 8B10B Decoder is not a 8B10B Encoded Word")
+
+        decoded_int = int(decoded, 2)
+        ctrl = (decoded_int >> 8) & 0x1
+        decoded_int &= 0xFF  # Extract 8-bit value
+
+        print(f"Decoded: {decoded_int:02X} - Control: {ctrl}")
+
+        return ctrl, decoded_int
+
+
+if __name__ == "__main__":
+    toDecode = ["0C7", "1A6", "0E9", "0D3", "2B1", "235", "2AA", "14D", ]
+    decodedData = []
+    for data in toDecode:
+        decodedData.append(hex(EncDec_8B10B.dec_8b10b(int(data, 16))[1]))
+
+    print(decodedData)

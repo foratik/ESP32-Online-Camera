@@ -1035,12 +1035,36 @@ char* tbl8b10b[1024] = {
 
 uint16_t encode8b10b(uint8_t input, bool *rd) {
     int index = (*rd ? 512 : 0) + input;
+
+    printf("Encoding input: 0x%02X (Decimal: %d, RD: %c) -> Index: %d\n",
+           input, input, (*rd ? '+' : '-'), index);
+
     char *encodedStr = tbl8b10b[index];
+    if (!encodedStr) {
+        printf("ERROR: Encoding table returned NULL for index %d\n", index);
+        return 0;
+    }
+
     uint16_t encoded = 0;
-    for (int i = 1; i < 11; ++i) {
+    printf("Encoding string: %s\n", encodedStr);
+
+    for (int i = 1; i <= 10; ++i) {
         encoded = (encoded << 1) | (encodedStr[i] == '1' ? 1 : 0);
     }
-    *rd = encodedStr[0] == '1';
+
+    printf("Encoded output: 0x%03X (Binary: ", encoded);
+    for (int i = 9; i >= 0; i--) {
+        printf("%d", (encoded >> i) & 1);
+    }
+    printf(")\n");
+
+    int ones = 0, zeros = 0;
+    for (int i = 0; i < 10; i++) {
+        if (encodedStr[i] == '1') ones++;
+        else zeros++;
+    }
+    *rd = (ones > zeros);
+
     return encoded;
 }
 
@@ -1055,6 +1079,8 @@ int main() {
     for (size_t i = 0; i < SIZE; i++) {
         fbbuf[i] = rand() % 256;
     }
+
+    fbbuf[7] = 173;
 
     printf("fbbuf result:\n");
     for (size_t i = 0; i < SIZE; i++) {
