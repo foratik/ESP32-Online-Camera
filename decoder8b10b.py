@@ -1,3 +1,6 @@
+import random
+
+
 class EncDec_8B10B(object):
     dec_lookup = [
         "DEC8b10bERR",  # "0000000000"
@@ -2053,10 +2056,11 @@ class EncDec_8B10B(object):
     ]
 
     @staticmethod
-    def dec_8b10b(data_in, verbose=True):
+    def dec_8b10b(data_in, verbose=False):
         assert data_in <= 0x3FF, "Data in must be maximum 10 bits"
 
-        print(f"Decoding input: {data_in:010b} ({hex(data_in)})")
+        if verbose:
+            print(f"Decoding input: {data_in:010b} ({hex(data_in)})")
 
         decoded = EncDec_8B10B.dec_lookup[data_in] if data_in < len(EncDec_8B10B.dec_lookup) else "DEC8b10bERR"
 
@@ -2068,15 +2072,34 @@ class EncDec_8B10B(object):
         ctrl = (decoded_int >> 8) & 0x1
         decoded_int &= 0xFF  # Extract 8-bit value
 
-        print(f"Decoded: {decoded_int:02X} - Control: {ctrl}")
+        if verbose:
+            print(f"Decoded: {decoded_int:02X} - Control: {ctrl}")
 
         return ctrl, decoded_int
 
+    @staticmethod
+    def encode(data_in, disparity=0, verbose=False):
+        encoded_value = EncDec_8B10B.enc_lookup[data_in + 512 * disparity]
+        if verbose:
+            print(f"encoding value {data_in} to {encoded_value}")
+
+        return int(encoded_value[1:], 2), disparity
+
 
 if __name__ == "__main__":
-    toDecode = ["0C7", "1A6", "0E9", "0D3", "2B1", "235", "2AA", "14D", ]
-    decodedData = []
-    for data in toDecode:
-        decodedData.append(hex(EncDec_8B10B.dec_8b10b(int(data, 16))[1]))
+    test = [random.randint(0, 255) for _ in range(256)]
+    decoded = []
+    catch = 0
+    for data in test:
+        value_as_number = data
+        encoded = EncDec_8B10B.encode(value_as_number)[0]
 
-    print(decodedData)
+        bit_to_flip = 1 << random.randint(0, 9)
+        faulty_encoded = encoded ^ bit_to_flip  # Flip one bit
+
+        try:
+            decoded = EncDec_8B10B.dec_8b10b(faulty_encoded)[1]
+        except Exception as e:
+            catch += 1
+
+    print(catch)

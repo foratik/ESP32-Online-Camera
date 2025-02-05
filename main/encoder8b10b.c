@@ -1,9 +1,9 @@
 #include <stdio.h>
-#include <stdint.h>
 #include <stdlib.h>
-#include <time.h>
+#include <stdint.h>
 #include <stdbool.h>
 #include <string.h>
+#include <curl/curl.h>  // For HTTP requests
 
 char* tbl8b10b[1024] = {
 		"00010111001", // "00000000" -D00.0- [0]
@@ -1032,44 +1032,34 @@ char* tbl8b10b[1024] = {
 		"11110001010"	// "11111111" +K31.7+ [1023]
 };
 
-
 uint16_t encode8b10b(uint8_t input, bool *rd) {
+    printf("encoding %x", input);
     int index = (*rd ? 512 : 0) + input;
-
-    printf("Encoding input: 0x%02X (Decimal: %d, RD: %c) -> Index: %d\n",
-           input, input, (*rd ? '+' : '-'), index);
-
     char *encodedStr = tbl8b10b[index];
+
     if (!encodedStr) {
         printf("ERROR: Encoding table returned NULL for index %d\n", index);
         return 0;
     }
 
     uint16_t encoded = 0;
-    printf("Encoding string: %s\n", encodedStr);
-
     for (int i = 1; i <= 10; ++i) {
         encoded = (encoded << 1) | (encodedStr[i] == '1' ? 1 : 0);
     }
-
-    printf("Encoded output: 0x%03X (Binary: ", encoded);
-    for (int i = 9; i >= 0; i--) {
-        printf("%d", (encoded >> i) & 1);
-    }
-    printf(")\n");
 
     int ones = 0, zeros = 0;
     for (int i = 0; i < 10; i++) {
         if (encodedStr[i] == '1') ones++;
         else zeros++;
     }
-    *rd = (ones > zeros);
-
+//    *rd = (ones > zeros);
+    printf(" to %x\n", encoded);
     return encoded;
 }
 
-int main() {
-    const size_t SIZE = 8;
+
+int test() {
+const size_t SIZE = 8;
     uint8_t fbbuf[SIZE];
     uint16_t result[SIZE];
     bool disparity = false;
@@ -1079,8 +1069,6 @@ int main() {
     for (size_t i = 0; i < SIZE; i++) {
         fbbuf[i] = rand() % 256;
     }
-
-    fbbuf[7] = 173;
 
     printf("fbbuf result:\n");
     for (size_t i = 0; i < SIZE; i++) {
@@ -1099,4 +1087,36 @@ int main() {
     }
 
     return 0;
+}
+
+int webTest() {
+    const char *image_file = "image.png";
+    size_t img_size;
+
+    uint8_t *image_data = read_image(image_file, &img_size);
+    if (!image_data) {
+        return 1;
+    }
+
+    uint16_t *encoded_data = (uint16_t *)malloc(img_size * sizeof(uint16_t));
+    if (!encoded_data) {
+        printf("ERROR: Memory allocation failed\n");
+        free(image_data);
+        return 1;
+    }
+
+    bool disparity = true;
+    for (size_t i = 0; i < img_size; i++) {
+        encoded_data[i] = encode8b10b(image_data[i], &disparity);
+    }
+
+    send_data_to_server(encoded_data, img_size);
+
+    free(image_data);
+    free(encoded_data);
+    return 0;
+}
+
+int main() {
+    test();
 }
